@@ -22,7 +22,7 @@ def listen(host, port):
         logging.debug(f"Sycat: Listening on {host}:{port}")
         server.listen(1)
     except Exception:
-        print(f"Sycat: {sys.argv[0]} Address already in use")
+        print(f"Sycat: Address already in use.")
         sys.exit(1)
     
     conn,addr = server.accept()
