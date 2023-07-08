@@ -8,7 +8,7 @@ Reason why create this script ?
 # Feature
 Sycat currently support spawning pty shell and configure the terminal size automatically and also support:
 -  read stdin as input.
--  raw tty mode (obviously).
+-  support raw tty mode (stty raw -echo).
 -  using built in python module (no need to install any module).
 
 # Install 
@@ -29,5 +29,6 @@ listen incoming connection:
 ![image](https://github.com/zulfi0/sycat/assets/68773572/239a6d44-e373-4918-b1d8-4b5d2c7c3c28)
 
 spawning pty shell:
+
 ![image](https://github.com/zulfi0/sycat/assets/68773572/0d877094-cc08-45e8-8061-206c95c0e6ee)
 
