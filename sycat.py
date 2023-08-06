@@ -101,7 +101,6 @@ class Receiver:
         with specified status without calling cleanup handlers, flushing stdio buffers, kill all threads, etc. 
         '''
         try:
-            self.conn.shutdown(socket.RDWR)
             self.conn.close()
         except:
             pass
