@@ -5,23 +5,28 @@ Reason why create this script ?
 - tired of spawning pty shell and configure the terminal size every time get reverse shell connection while playing boot2root ctf.
 - learn more about socket implementation.
 
-# Update V0.3
-due to compiling .exe binary now the script require `go` to be installed.
+# Update V0.4
+due to compiling .exe binary now the script require `go` to be installed and `upx` for compressing the exe payload.
 
 some update:
-- Sycat V0.3 now support generating payload only in bash,nc, and exe.
-- payload encoding (base64) currently support in bash and nc payload creation.
-- auto spawn pty shell with options (-tty)
-- bypass amsi is now supported with options (-amsi)
+- now support listen or connect with ssl `(--ssl)`.
+- change the encode options to `(-en)` instead of `(-e)`.
+- execute command to execute for listen or connect is now supported.
+- options `-host` and `-p` to specify ip and port is now changed to positional argument, where the default value of ip is `0.0.0.0`
 
 # Feature
 Sycat currently support spawning pty shell and configure the terminal size automatically and also support:
 -  read stdin as input.
 -  support raw tty mode (stty raw -echo).
 -  using built in python module (no need to install any module).
--  Sycat V0.3 now support generating payload only in bash,nc, and exe.
--  auto spawn pty shell with options (-tty)
--  bypass amsi is now supported with options (-amsi)
+-  support generating payload only in bash,nc, and exe.
+-  auto spawn pty shell and configure the terminal size automatically with options (-tty)
+-  bypass amsi is supported with options (-amsi)
+-  ssl is now supported !
+-  execute command to  execute for listen or connect.
+
+# Known Issue
+- options `-e` to execute command for listen or connect currently not compatible with --ssl.
 
 # Install 
 Clone:
@@ -36,7 +41,7 @@ chmod +x scat.py && ./scat.py --help
 # Example
 available options:
 
-![image](https://github.com/zulfi0/sycat/assets/68773572/9a7a5f72-bb59-4ba2-9874-ea9b985a1c1e)
+![image](https://github.com/zulfi0/sycat/assets/68773572/f71d14fc-4d92-4332-be30-928d7f15c770)
 
 listen incoming connection:
 
