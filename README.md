@@ -39,17 +39,33 @@ chmod +x scat.py && ./scat.py --help
 ```
 
 # Example
-available options:
-
-![image](https://github.com/zulfi0/sycat/assets/68773572/f71d14fc-4d92-4332-be30-928d7f15c770)
-
 listen incoming connection:
+```bash
+./scat.py -vl 1337
+```
 
-![image](https://github.com/zulfi0/sycat/assets/68773572/239a6d44-e373-4918-b1d8-4b5d2c7c3c28)
+auto spawning pty shell when received reverse shell connection:
+```bash
+./scat.py -vl 1337 -tty
+```
 
-spawning pty shell:
+auto spawning pty shell when connected to bind shell connection:
+```bash
+./scat.py -v 127.0.0.1 1337 -tty
+```
+to listen with `SSL` first generate the key and cert file:
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout server-key.pem -out server-cert.pem -days 365 -nodes
+```
+listen with ssl key and cert file:
+```bash
+sycat -vl 1337 --ssl --ssl-key server-key.pem --ssl-cert server-cert.pem
+```
 
-![image](https://github.com/zulfi0/sycat/assets/68773572/0d877094-cc08-45e8-8061-206c95c0e6ee)
+or connect with ssl:
+```bash
+sycat -v 127.0.0.1 1337 --ssl --ssl-key server-key.pem --ssl-cert server-cert.pem
+```
 
 # To do
 - add powershell script payload and its obfuscate
